@@ -455,14 +455,47 @@ window.addEventListener('load', async () => {
   showManual();
 });
 
-// ── Try HTTP / GitHub Pages (manifest.json first, then directory listing) ──
+// ── Build candidate dates: today back 14 days (MM-DD-YYYY) ──
+function recentDates() {
+  const dates = [];
+  const d = new Date();
+  for (let i = 0; i < 14; i++) {
+    const t = new Date(d); t.setDate(d.getDate() - i);
+    const mm = String(t.getMonth()+1).padStart(2,'0');
+    const dd = String(t.getDate()).padStart(2,'0');
+    dates.push(`${mm}-${dd}-${t.getFullYear()}`);
+  }
+  return dates;
+}
+
+// ── Resolve type → latest filename by probing recent dates ──
+async function resolveLatestFiles(types) {
+  const dates = recentDates();
+  const found = [];
+  for (const type of types) {
+    for (const date of dates) {
+      const name = `stocks-screener-${type}-${date}.csv`;
+      try {
+        const r = await fetch('./data/' + name, {method:'HEAD', cache:'no-store'});
+        if (r.ok) { found.push(name); break; }
+      } catch(e) {}
+    }
+  }
+  return found;
+}
+
+// ── Try HTTP / GitHub Pages (manifest.json → auto date-resolve → directory listing) ──
 async function tryHTTPLoad() {
   try {
-    // Strategy 1: manifest.json (works on GitHub Pages + local server)
+    // Strategy 1: manifest.json
     const mRes = await fetch('./data/manifest.json', {cache: 'no-store'});
     if (mRes.ok) {
       const manifest = await mRes.json();
-      const names = manifest.files || [];
+      // Support both {types:[...]} (auto-resolve) and {files:[...]} (exact names)
+      let names = manifest.files || [];
+      if (!names.length && manifest.types) {
+        names = await resolveLatestFiles(manifest.types);
+      }
       if (names.length) {
         const csvTexts = {};
         for (const name of names) {
